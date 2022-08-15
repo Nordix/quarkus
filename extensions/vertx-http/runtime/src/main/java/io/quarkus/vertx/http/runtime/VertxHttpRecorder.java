@@ -813,22 +813,13 @@ public class VertxHttpRecorder {
                     + "same number of elements");
         }
 
-        List<Buffer> certificates = new ArrayList<>();
-        List<Buffer> keys = new ArrayList<>();
-
-        for (Path p : certFile) {
-            final byte[] cert = getFileContent(p);
-            certificates.add(Buffer.buffer(cert));
+        PemKeyCertOptions pemKeyCertOptions = new PemKeyCertOptions();
+        for (Path cert : certFile) {
+            pemKeyCertOptions.addCertPath(cert.toString());
         }
-
-        for (Path p : keyFile) {
-            final byte[] key = getFileContent(p);
-            keys.add(Buffer.buffer(key));
+        for (Path key : keyFile) {
+            pemKeyCertOptions.addKeyPath(key.toString());
         }
-
-        PemKeyCertOptions pemKeyCertOptions = new PemKeyCertOptions()
-                .setCertValues(certificates)
-                .setKeyValues(keys);
         serverOptions.setPemKeyCertOptions(pemKeyCertOptions);
     }
 
