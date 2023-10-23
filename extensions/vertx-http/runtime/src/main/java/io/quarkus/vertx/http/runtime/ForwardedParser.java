@@ -125,41 +125,62 @@ class ForwardedParser {
         uri = delegate.uri();
 
         if (trustedProxyCheck.isProxyAllowed()) {
+            String schemeFromHeader = null;
+            String hostFromHeader = null;
+            SocketAddress remoteAddressFromHeader = null;
+            int portFromHeader = -1;
+
             String forwarded = delegate.getHeader(FORWARDED);
             if (forwardingProxyOptions.allowForwarded && forwarded != null) {
                 Matcher matcher = FORWARDED_PROTO_PATTERN.matcher(forwarded);
                 if (matcher.find()) {
-                    scheme = (matcher.group(1).trim());
-                    port = -1;
+                    schemeFromHeader = (matcher.group(1).trim());
                 }
 
                 matcher = FORWARDED_HOST_PATTERN.matcher(forwarded);
                 if (matcher.find()) {
-                    setHostAndPort(matcher.group(1).trim(), port);
+                    hostFromHeader = matcher.group(1).trim();
                 }
 
                 matcher = FORWARDED_FOR_PATTERN.matcher(forwarded);
                 if (matcher.find()) {
-                    remoteAddress = parseFor(matcher.group(1).trim(), remoteAddress != null ? remoteAddress.port() : port);
+                    remoteAddressFromHeader = parseFor(matcher.group(1).trim(),
+                            remoteAddress != null ? remoteAddress.port() : port);
                 }
-            } else if (forwardingProxyOptions.allowXForwarded) {
+            }
+
+            if (forwardingProxyOptions.allowXForwarded) {
                 String protocolHeader = delegate.getHeader(X_FORWARDED_PROTO);
                 if (protocolHeader != null) {
-                    scheme = getFirstElement(protocolHeader);
+                    String val = getFirstElement(protocolHeader);
+                    // If both Forwarded proto and X-Forwarded-Proto are specified, they need to be consistent.
+                    if (schemeFromHeader != null && !schemeFromHeader.equals(val)) {
+                       delegate.response().setStatusCode(400).end("Mismatch protocol given in Forwarded and X-Forwarded-Proto");
+                    }
+                    schemeFromHeader = val;
                     port = -1;
                 }
 
                 String forwardedSsl = delegate.getHeader(X_FORWARDED_SSL);
                 boolean isForwardedSslOn = forwardedSsl != null && forwardedSsl.equalsIgnoreCase("on");
                 if (isForwardedSslOn) {
-                    scheme = HTTPS_SCHEME;
+                    // If both Forwarded proto and X-Forwarded-Ssl are specified, they need to be consistent.
+                    if (schemeFromHeader != null && !schemeFromHeader.equals(HTTPS_SCHEME)) {
+                        delegate.response().setStatusCode(400).end("Mismatch protocol given in Forwarded and X-Forwarded-Ssl");
+                    }
+                    schemeFromHeader = HTTPS_SCHEME;
                     port = -1;
                 }
 
                 if (forwardingProxyOptions.enableForwardedHost) {
                     String hostHeader = delegate.getHeader(forwardingProxyOptions.forwardedHostHeader);
                     if (hostHeader != null) {
-                        setHostAndPort(getFirstElement(hostHeader), port);
+                        String val = getFirstElement(hostHeader);
+                        // If both Forwarded host and X-Forwarded-Host are specified, they need to be consistent.
+                        if (hostFromHeader != null && !hostFromHeader.equals(val)) {
+                            delegate.response().setStatusCode(400).end("Mismatch host given in Forwarded and X-Forwarded-Host");
+                        }
+                        hostFromHeader = val;
                     }
                 }
 
@@ -172,13 +193,35 @@ class ForwardedParser {
 
                 String portHeader = delegate.getHeader(X_FORWARDED_PORT);
                 if (portHeader != null) {
-                    port = parsePort(getFirstElement(portHeader), port);
+                    portFromHeader = parsePort(getFirstElement(portHeader), port);
+                    // If both Forwarded port and X-Forwarded-Port are specified, they need to be consistent.
+                    if (port != -1 && portFromHeader != -1 && port != portFromHeader) {
+                        delegate.response().setStatusCode(400).end("Mismatch port given in Forwarded and X-Forwarded-Port");
+                    }
                 }
 
                 String forHeader = delegate.getHeader(X_FORWARDED_FOR);
                 if (forHeader != null) {
-                    remoteAddress = parseFor(getFirstElement(forHeader), remoteAddress != null ? remoteAddress.port() : port);
+                    remoteAddressFromHeader = parseFor(getFirstElement(forHeader),
+                            remoteAddress != null ? remoteAddress.port() : port);
+                    // If both Forwarded for and X-Forwarded-For are specified, they need to be consistent.
+                    if (remoteAddress != null && !remoteAddress.equals(remoteAddressFromHeader)) {
+                        delegate.response().setStatusCode(400).end("Mismatch address given in Forwarded and X-Forwarded-For");
+                    }
                 }
+            }
+
+            if (schemeFromHeader != null) {
+                scheme = schemeFromHeader;
+            }
+            if (hostFromHeader != null) {
+                setHostAndPort(hostFromHeader, port);
+            }
+            if (remoteAddressFromHeader != null) {
+                remoteAddress = remoteAddressFromHeader;
+            }
+            if (portFromHeader != -1) {
+                port = portFromHeader;
             }
         }
 

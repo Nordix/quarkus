@@ -2,7 +2,6 @@ package io.quarkus.vertx.http;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import org.hamcrest.Matchers;
 import org.jboss.shrinkwrap.api.asset.StringAsset;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -35,6 +34,6 @@ public class AllowBothForwardedHeadersTest {
                 .header("X-Forwarded-Server", "somehost")
                 .get("/path")
                 .then()
-                .body(Matchers.equalTo("http|somehost2|backend2:5555|/path|http://somehost2/path"));
+                .statusCode(400);
     }
 }
